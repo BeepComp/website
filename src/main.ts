@@ -1,4 +1,5 @@
 import "./extends/print"
+import "./extends/string"
 
 import { createApp, ref, inject } from 'vue';
 import './style.css'

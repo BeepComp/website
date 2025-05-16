@@ -35,6 +35,7 @@ body {
     height: 64px;
     opacity: 0.3;
     transition: all 100ms ease;
+    cursor: pointer;
     /* transition-property: opacity; */
     /* -webkit-text-stroke: 5px #0D0D0D; */
     /* text-stroke: 5px #0D0D0D; */
@@ -56,4 +57,18 @@ body {
   .terminal-subtext-bold {
     color: #ffffff4c;
     font-weight: bold;
+  }
+
+  .terminal-subtext-hidden {
+    color: #ffffff08;
+  }
+
+  .terminal-input {
+    font-family: BakbakOne;
+    font-size: 32px;
+    color: white;
+    background: #0c0c0c;
+    border: var(--color) solid 8px;
+    border-radius: 24px;
+    height: 64px;
   }

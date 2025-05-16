@@ -27,6 +27,14 @@
     "@babel/helper-string-parser" "^7.25.9"
     "@babel/helper-validator-identifier" "^7.25.9"
 
+"@beepcomp/core@file:../core":
+  version "0.0.1"
+  resolved "file:../core"
+  dependencies:
+    "@bbob/core" "^4.2.0"
+    "@bbob/parser" "^4.2.0"
+    "@bbob/preset-html5" "^4.2.0"
+
 "@esbuild/win32-x64@0.25.3":
   version "0.25.3"
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.3.tgz"

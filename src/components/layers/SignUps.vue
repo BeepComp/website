@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { computed, ComputedRef, DefineComponent, inject, onMounted, provide, ref, render, triggerRef, useTemplateRef, type Ref } from 'vue';
+import { computed, ComputedRef, DefineComponent, inject, onMounted, provide, ref, render, triggerRef, unref, useTemplateRef, type Ref } from 'vue';
 import { API } from '../../modules/api';
-import { InitEvents } from '../../modules/init';
+import { InitEvents, isParticipant } from '../../modules/init';
 import { DiscordAccess, DiscordAuth, SignUpMetadata, signupMode, TerminalEvents } from '../../modules/persists';
 import { CharObj, getLineChars, SignupButton, SignupDialogue } from '@beepcomp/core';
+
+const SignUpPayload = ref({
+  noun: "",
+  verb: "",
+  adjective: "",
+})
+provide("SignUpPayload", SignUpPayload)
 
 const _DiscordJustLoggedIn = ref(false)
 provide("_DiscordJustLoggedIn", _DiscordJustLoggedIn)
@@ -41,15 +48,30 @@ const linesContRef = useTemplateRef("signups-lines-cont")
 
 const ButtonFilter: Ref<(button: SignupButton, index?: number) => boolean> = ref(() => true )
 const ButtonIntercepts: Ref<{[index: string]: () => void}> = ref({
+  signup_confirm_yes: async () => {
+    print("I'm boss.", SignUpPayload.value)
+    // Loading Wheel?...
+    await API.POST("/signup", SignUpPayload.value)
+    isParticipant.value = true
+    gotoDialogue("signup_complete")
+  },
   withdraw_yes: async () => {
     print("I'm boss.")
+    // Loading Wheel?...
     DiscordAuth.value = {}
     _DiscordJustLoggedIn.value = false
+    isParticipant.value = false
+    let res = await API.DELETE("/users/@me")
+    print("DELETE res: ", res)
     gotoDialogue("home")
   }
 })
+const ContinueIntercepts: Ref<{[index: string]: () => void}> = ref({
+})
+
+const lastLine = ref(false)
 async function gotoDialogue(id: string) {
-  let thisDialogue = SignUpMetadata.value.find(entry => entry.id == id)
+  let thisDialogue: SignupDialogue = JSON.parse(JSON.stringify(SignUpMetadata.value.find(entry => entry.id == id)))
 
   ButtonFilter.value = () => true
   // Intercepts for various things
@@ -57,22 +79,23 @@ async function gotoDialogue(id: string) {
     case "home":
       ButtonFilter.value = (button) => {
         let res = true
-        if (!DiscordLoggedIn.value && button.id == "home_withdraw") { res = false }
-        if (DiscordLoggedIn.value && button.id == "home_signup") { res = false }
+        if (!isParticipant.value && button.id == "home_withdraw") { res = false }
+        if (isParticipant.value && button.id == "home_signup") { res = false }
         return res
       }
 
-      if (DiscordLoggedIn.value) {
+      if (isParticipant.value) {
         thisDialogue.lines = ["Welcome back! What are you looking to do?..."]
       }
     break;
     case "verify_identity":
-      if (DiscordLoggedIn.value) {
+      if (isParticipant.value) {
         gotoDialogue("already_verified")
         return
       }
     break;
   }
+
 
   if (thisDialogue) {
     CurrentDialogue.value = thisDialogue
@@ -80,16 +103,21 @@ async function gotoDialogue(id: string) {
     renderedLines.value = []
     visibleLines.value = []
     renderedButtons.value = []
+    // print("RESET HERE!!")
 
     terminalVisible.value = false
     navVisible.value = false
+
+    lastLine.value = false
 
     // Lines
     if (thisDialogue.lines.length > 0) {
       await sayLine(thisDialogue.lines[0])
     }
 
-    print("done printing lines??...")
+    lastLine.value = true
+
+    // print("done printing lines??...")
 
     renderedButtons.value = thisDialogue.buttons
 
@@ -120,6 +148,7 @@ const renderedLines: Ref<CharObj[][][]> = ref([]) // lines => words => chars
 const visibleLines: Ref<string[]> = ref([]) // lines => words => chars
 // const renderingLineIdx = ref(-1)
 async function sayLine(line: string) {
+  // print("INTERVAL DIES HERE!!")
   clear_interval_channel("rendering_chars")
 
   return new Promise<void>(async (res, rej) => {
@@ -192,9 +221,15 @@ function interpretButtonAction(action: string, id?: string) {
 }
 
 import discord_terminal from "../terminals/discord.vue"
+import noun_terminal from "../terminals/noun.vue"
+import verb_terminal from "../terminals/verb.vue"
+import adjective_terminal from "../terminals/adjective.vue"
 import { clear_interval, clear_interval_channel, interval, timeout, wait } from '../../modules/time_based';
 const Terminals: any = {
-  discord: discord_terminal
+  discord: discord_terminal,
+  noun: noun_terminal,
+  verb: verb_terminal,
+  adjective: adjective_terminal,
 }
 const CurrentTerminal: ComputedRef<DefineComponent | null> = computed(() => {
   if (CurrentDialogue.value?.terminal_id == null ) {
@@ -226,10 +261,10 @@ function advanceFrame() {
 <div id="signups" class="layer">
   <Transition name="cont">
     <div ref="signups-lines-cont" id="signups-lines-cont" class="signup-cont" v-show="linesVisible"> <!-- Lines Container -->
-      <p v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="lineIdx">
-        <p v-for="(word, wordIdx) in line" class="line-word" :key="wordIdx">
+      <p v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
+        <p v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
           <TransitionGroup name="char">
-            <p v-for="(charObj, charIdx) in word" v-show="visibleLines.includes(`${lineIdx}-${wordIdx}-${charIdx}`)" v-html="charObj.html" class="line-char" :key="charIdx"></p>
+            <p v-for="(charObj, charIdx) in word" v-show="visibleLines.includes(`${lineIdx}-${wordIdx}-${charIdx}`)" v-html="charObj.html" class="line-char" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
           </TransitionGroup>
         </p>
       </p>
@@ -253,8 +288,7 @@ function advanceFrame() {
   </Transition>
   <Transition name="cont">
     <div ref="signups-nav-cont" id="signups-nav-cont" class="signup-cont" v-show="navVisible"> <!-- Navigation Button Container -->
-      <p id="continue-button" @click="e => {if (CanContinue) {ContinueAction()}}" :can-continue="CanContinue">{{ ContinueLabel }}</p>
-    </div>
+      <p id="continue-button" @click="e => {if (CanContinue) { if (CurrentDialogue != null && lastLine && Object.keys(ContinueIntercepts).includes(CurrentDialogue.id)) {ContinueIntercepts[CurrentDialogue.id]()} else {ContinueAction()}}}" :can-continue="CanContinue">{{ ContinueLabel }}</p>    </div>
   </Transition>
 </div>
 </template>
@@ -301,6 +335,7 @@ function advanceFrame() {
   width: calc(100% - (var(--padding) * 2));
   padding-left: var(--padding);
   padding-right: var(--padding);
+  /* overflow-y: scroll; */
 }
 
 .rendered-line {
@@ -314,7 +349,8 @@ function advanceFrame() {
   margin: 0px;
   opacity: 0.1;
   gap: 15px;
-  transition: opacity 0.5 ease;
+  transition: 0.5s ease;
+  transition-property: opacity, transform;
 }
 
 .rendered-line:last-child {
@@ -443,6 +479,7 @@ function advanceFrame() {
   font-size: 32px;
   color: white;
   margin: 0px;
+  cursor: pointer;
 }
 #continue-button[can-continue=false] {
   opacity: 0.1;

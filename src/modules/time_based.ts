@@ -4,9 +4,14 @@ export function interval(func: Function, ms: number = 0, fire_immediately: boole
   let id = setInterval(func, ms, args)
 
   channel = (channel == null ? "_" : channel)
+  // print("[ INTERVALS ] ", channel)
   if (intervals[channel] == null) { intervals[channel] = [] }
   intervals[channel].push(id)
 
+  if (channel == "rendering_chars") {
+    // print("[ INTERVALS ] ", intervals, id)
+    // print("[ INTERVALS ] ", intervals[channel].length)
+  }
   return id
 }
 export function clear_interval(id: number) {
@@ -14,7 +19,7 @@ export function clear_interval(id: number) {
   for (let index = 0; index < channels.length; index++) {
     let channel = channels[index]
     let ind = intervals[channel].indexOf(id)
-    if (ind != null) {
+    if (ind != -1) {
       clearInterval(id)
       intervals[channel].splice(ind, 1)
     }
@@ -22,6 +27,8 @@ export function clear_interval(id: number) {
 }
 export function clear_interval_channel(channel: string) {
   if (intervals[channel] == null) { return }
+  // print("[ INTERVALS ] ", intervals[channel])
+  // print("[ INTERVALS ] ", intervals[channel].length)
 
   intervals[channel].forEach(id => {
     clearInterval(id)

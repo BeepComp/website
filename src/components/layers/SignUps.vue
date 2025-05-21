@@ -1,9 +1,74 @@
 <script setup lang="ts">
 import { computed, ComputedRef, DefineComponent, inject, onMounted, provide, ref, render, triggerRef, unref, useTemplateRef, type Ref } from 'vue';
 import { API } from '../../modules/api';
-import { InitEvents, isParticipant } from '../../modules/init';
+import { InitEvents, isParticipant, LastState } from '../../modules/init';
 import { DiscordAccess, DiscordAuth, SignUpMetadata, signupMode, TerminalEvents } from '../../modules/persists';
-import { CharObj, getLineChars, SignupButton, SignupDialogue } from '@beepcomp/core';
+import { CharObj, getLineChars, SignupButton, SignupDialogue, State } from '@beepcomp/core';
+
+import { ReturnedValue, useSound } from '@vueuse/sound'
+
+const VOL = 0.5
+
+import brainscan_preAudio from "../../assets/sfx/BRAINSCAN_pre.flac"
+const brainscan_preSFX = useSound(brainscan_preAudio, {onload: () => {
+    (brainscan_preSFX.sound.value as any).loop(true)
+    brainscan_preSFX.play()
+  },
+  volume: VOL
+})
+import brainscan_mainAudio from "../../assets/sfx/brainscan_main.flac"
+const brainscan_mainSFX = useSound(brainscan_mainAudio, {onload: () => {
+    (brainscan_mainSFX.sound.value as any).loop(true) 
+    brainscan_mainSFX.play()
+  },
+  volume: 0
+})
+import brainscan_postAudio from "../../assets/sfx/brainscan_post.flac"
+const brainscan_postSFX = useSound(brainscan_postAudio, {onload: () => {
+    (brainscan_postSFX.sound.value as any).loop(true) 
+    brainscan_postSFX.play()
+  },
+  volume: 0
+})
+
+InitEvents.on("signup_init", (state: State) => {
+  print("bro...")
+  // switchTo("pre")
+})
+
+function switchTo(mode: string) {
+  const map: {[index: string]: ReturnedValue} = {
+    "pre": brainscan_preSFX,
+    "main": brainscan_mainSFX,
+    "post": brainscan_postSFX
+  }
+  
+  Object.keys(map).forEach(this_mode => {
+    print(this_mode, map[this_mode].sound.value)
+    if (map[mode].sound.value == null) { return }
+    print(this_mode, map[this_mode].sound.value.volume())
+    if (this_mode == mode) {
+      if (map[this_mode].sound.value.volume() != VOL) {
+        map[this_mode].sound.value.fade(0, VOL, 1000)
+      }
+    } else {
+      if (map[this_mode].sound.value.volume() > 0) {
+        map[this_mode].sound.value.fade(map[this_mode].sound.value.volume(), 0, 1000)
+      }
+    }
+  })
+}
+
+import printingAudio from "../../assets/sfx/printing.flac"
+const printingSFX = useSound(printingAudio, {
+  interrupt: false,
+  playbackRate: 3
+})
+
+import hoverAudio from "../../assets/sfx/hover.flac"
+const hoverSFX = useSound(hoverAudio, {
+  interrupt: false
+})
 
 const SignUpPayload = ref({
   noun: "",
@@ -77,6 +142,7 @@ async function gotoDialogue(id: string) {
   // Intercepts for various things
   switch (thisDialogue?.id) {
     case "home":
+      switchTo("pre")
       ButtonFilter.value = (button) => {
         let res = true
         if (!isParticipant.value && button.id == "home_withdraw") { res = false }
@@ -85,14 +151,18 @@ async function gotoDialogue(id: string) {
       }
 
       if (isParticipant.value) {
-        thisDialogue.lines = ["Welcome back! What are you looking to do?..."]
+        thisDialogue.lines = ["[wavy]Welcome back, ${DISCORD_USER}![/wavy] What are you looking to do?..."]
       }
     break;
     case "verify_identity":
+      switchTo("main")
       if (isParticipant.value) {
         gotoDialogue("already_verified")
         return
       }
+    break;
+    case "input_noun":
+      switchTo("post")
     break;
   }
 
@@ -144,24 +214,76 @@ async function gotoDialogue(id: string) {
   }
 }
 
+function escapeRegExp(str: string) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+
+function replaceAll(str: string, find: string, replace: string) {
+  return str.replace(new RegExp(escapeRegExp(find), 'g'), replace);
+}
+
+function injectVars(line: string) {
+  let currentLine = line
+
+  let MAP: {[index: string]: string} = {
+    "DISCORD_USER": (LastState.value.user?.username || "oops..."),
+    "DISCORD_DISPLAY_NAME": ((LastState.value.user?.global || LastState.value.user?.username) || "oops..."),
+    "NOUN_STRING": SignUpPayload.value.noun,
+    "VERB_STRING": SignUpPayload.value.verb,
+    "ADJECTIVE_STRING": SignUpPayload.value.adjective,
+  }
+
+  Object.keys(MAP).forEach((key: string) => {
+    currentLine = replaceAll(currentLine, `\$\{${key}\}`, MAP[key])
+  })
+
+  return currentLine
+}
+
 const renderedLines: Ref<CharObj[][][]> = ref([]) // lines => words => chars
 const visibleLines: Ref<string[]> = ref([]) // lines => words => chars
 // const renderingLineIdx = ref(-1)
+const lineID: Ref<number> = ref(0)
 async function sayLine(line: string) {
+  lineID.value = Date.now()
+  let thisID = Date.now()
   // print("INTERVAL DIES HERE!!")
-  clear_interval_channel("rendering_chars")
+  clear_timeout_channel("rendering_chars")
 
   return new Promise<void>(async (res, rej) => {
     let lineIdx = renderedLines.value.length
     let lastLine = ((renderedLines.value.length + 1) == CurrentDialogue.value?.lines.length)
     // visibleLines.value.push([[]]) // line with an empty word
 
-    let words = getLineChars(line)
+    let injectedLine = injectVars(line)
+    let words = getLineChars(injectedLine)
+    // print(words)
     renderedLines.value.push(words)
     let wordIdx = 0
     let charIdx = 0
     if (lastLine) { finished() }
-    let lineInt = interval(() => {
+
+    const DELAYS: {[index: string]: number} = {
+      ",": 60,
+      ".?!": 180,
+    }
+
+    // const 
+
+    function getDelay(this_char: string) {
+      let delay = 20
+      Object.keys(DELAYS).forEach(key => {
+        if (key.includes(this_char)) {
+          delay = DELAYS[key]
+        }
+      })
+
+      return delay
+    }
+
+    const loop = () => {
+      if (lineID.value != thisID) { return }
+
       let adding_word = false
       // print(words[wordIdx].length, charIdx)
       if (charIdx == words[wordIdx].length) {
@@ -169,12 +291,18 @@ async function sayLine(line: string) {
         wordIdx += 1
         charIdx = 0
       }
+      
       if (wordIdx == words.length) {
-        clear_interval(lineInt)
+        // clear_interval(lineInt)
         if (!lastLine) { finished() }
+      } else {
+        // print(wordIdx, charIdx, words)
+        let this_delay = getDelay(words[wordIdx][charIdx].char)
+        timeout(loop, this_delay, "rendering_chars")
       }
       // if (adding_word) { visibleLines.value[lineIdx].push([]) }
 
+      printingSFX.play()
       visibleLines.value.push(`${lineIdx}-${wordIdx}-${charIdx}`)
 
       // let charElem = document.createElement("span")
@@ -184,7 +312,8 @@ async function sayLine(line: string) {
       // charElem.outerHTML = lineCharHTML[charIdx].html
 
       charIdx += 1
-    }, 40, true, "rendering_chars")
+    }
+    loop()
 
     async function finished() {
       if (!lastLine) {
@@ -208,6 +337,7 @@ async function sayLine(line: string) {
 
 const renderedButtons: Ref<SignupButton[]> = ref([])
 function interpretButtonAction(action: string, id?: string) {
+  if (CurrentDialogue.value?.terminal_id) { TerminalEvents.emit(`terminal_submitted_${CurrentDialogue.value?.terminal_id}`) }
   if (id != null && Object.keys(ButtonIntercepts.value).includes(id)) {
     ButtonIntercepts.value[id]()
   } else {
@@ -215,7 +345,7 @@ function interpretButtonAction(action: string, id?: string) {
     if (foundDialogue != null) {
       gotoDialogue(action)
     } else {
-      // go to url
+      window.open(action)
     }
   }
 }
@@ -224,7 +354,9 @@ import discord_terminal from "../terminals/discord.vue"
 import noun_terminal from "../terminals/noun.vue"
 import verb_terminal from "../terminals/verb.vue"
 import adjective_terminal from "../terminals/adjective.vue"
-import { clear_interval, clear_interval_channel, interval, timeout, wait } from '../../modules/time_based';
+import { clear_interval, clear_interval_channel, clear_timeout_channel, interval, timeout, wait } from '../../modules/time_based';
+import { lerp } from '../../modules/maths';
+// import { switchTo } from '../../modules/music';
 const Terminals: any = {
   discord: discord_terminal,
   noun: noun_terminal,
@@ -249,12 +381,40 @@ function setContinue(func: () => void, label: string = "CONTINUE") {
   ContinueLabel.value = label
 }
 
+const charsElems = useTemplateRef("char")
+const avgHeight = ref(0)
 const frame = ref(0)
 function advanceFrame() {
+  // print(charsElems)
+  if (charsElems.value == null) { requestAnimationFrame(advanceFrame); return }
+  let chars = (charsElems.value as unknown as HTMLParagraphElement[])
+
+  let sum = 0
+  let count = 0
+  chars.forEach((char: (HTMLParagraphElement)) => {
+    if (char != null) {
+      count += 1
+      sum += char.getBoundingClientRect().height
+    }
+  })
+
+  let thisAvgHeight = (sum / count)
+  if (thisAvgHeight > 0 && avgHeight.value == 0) {avgHeight.value = thisAvgHeight}
+  
+  let linesCont = linesContRef.value
+  if (linesCont) {
+    if (Math.abs(linesCont.scrollTop - Math.abs(linesCont.clientHeight - linesCont.scrollHeight)) > 2.0) {
+      print(linesCont.scrollTop, linesCont.clientHeight - linesCont.scrollHeight)
+      linesCont.scrollTop = lerp(linesCont.scrollTop, Math.abs(linesCont.clientHeight - linesCont.scrollHeight), 0.1)
+    } else {
+      linesCont.scrollTop = linesCont.scrollHeight
+    }
+  }
+
   frame.value += 1
   requestAnimationFrame(advanceFrame)
 }
-// advanceFrame()
+advanceFrame()
 </script>
 
 <template>
@@ -262,17 +422,22 @@ function advanceFrame() {
   <Transition name="cont">
     <div ref="signups-lines-cont" id="signups-lines-cont" class="signup-cont" v-show="linesVisible"> <!-- Lines Container -->
       <p v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
-        <p v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
-          <TransitionGroup name="char">
-            <p v-for="(charObj, charIdx) in word" v-show="visibleLines.includes(`${lineIdx}-${wordIdx}-${charIdx}`)" v-html="charObj.html" class="line-char" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
-          </TransitionGroup>
-        </p>
+        <TransitionGroup name="line">
+          <p v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
+            <p v-for="(charObj, charIdx) in word" class="line-char-cont" :wavy="charObj.tags.map(tag => tag.tag).includes('wavy')" :style="`--height: ${avgHeight}px; --index: ${visibleLines.indexOf(`${lineIdx}-${wordIdx}-${charIdx}`)}`">
+              <p ref="char" v-html="charObj.html" class="line-char-ref" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
+              <Transition name="char">
+                <p v-show="visibleLines.includes(`${lineIdx}-${wordIdx}-${charIdx}`)" class="line-char" v-html="charObj.html" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
+              </Transition>
+            </p>
+          </p>
+        </TransitionGroup>
       </p>
     </div>
   </Transition>
   <Transition name="cont">
     <div ref="signups-buttons-cont" id="signups-buttons-cont" class="signup-cont" v-show="renderedButtons.length > 0"> <!-- Button Container -->
-      <button v-for="signupButton in renderedButtons.filter(ButtonFilter)" class="signup-button" :style="`--color: ${signupButton.color}`" @click="interpretButtonAction(signupButton.action, signupButton.id)">{{ signupButton.text }}</button>
+      <button v-for="signupButton in renderedButtons.filter(ButtonFilter)" class="signup-button" :style="`--color: ${signupButton.color}`" @mouseenter="(_e: MouseEvent) => { hoverSFX.play() }" @click="interpretButtonAction(signupButton.action, signupButton.id)">{{ signupButton.text }}</button>
     </div>
   </Transition>
   <Transition name="cont">
@@ -335,7 +500,8 @@ function advanceFrame() {
   width: calc(100% - (var(--padding) * 2));
   padding-left: var(--padding);
   padding-right: var(--padding);
-  /* overflow-y: scroll; */
+  overflow-y: hidden;
+  /* scrollbar-width: none; */
 }
 
 .rendered-line {
@@ -363,7 +529,7 @@ function advanceFrame() {
   justify-content: center; */
   margin: 0px;
   transition: 1.0s cubic-bezier(0.34, 1.56, 0.64, 1);
-  transition-property: transform;
+  /* transition-property: transform; */
 }
 
 .word-move,
@@ -382,33 +548,66 @@ function advanceFrame() {
   display: none;
 }
 
+.line-char-cont {
+  position: relative;
+  --height: 0px;
+  margin: 0px;
+  height: var(--height);
+}
+
+.line-char-cont[wavy=true] {
+  animation: 1s ease-in-out 0s infinite alternate wavy;
+  animation-delay: calc(var(--index) * -300ms);
+}
+
 .line-char {
+  position: relative;
   /* display: inline-block; */
   white-space: break-spaces;
   margin: 0px;
   /* transform: translateY(0px); */
-  top: 0px;
+  top: calc(var(--height) * -1);
+  opacity: 1;
+  /* top: calc((var(--height) * -1) + var(--top) + var(--float)); */
   transition: 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   transition-property: opacity, top;
+}
+
+.line-char-ref {
+  /* display: inline-block; */
+  white-space: break-spaces;
+  margin: 0px;
+  /* transform: translateY(0px); */
+  opacity: 0.0;
+  top: 0px;
 }
 
 .char-move,
 .char-enter-active,
 .char-leave-active {
   position: relative;
+  /* animation: none; */
   /* transition: opacity 0.1s cubic-bezier(0.33, 1, 0.68, 1); */
 }
 .char-enter-from,
 .char-leave-to {
   /* transform: translateY(15px); */
   opacity: 0;
-  top: 15px;
+  top: calc((var(--height) * -1) + 15px);
 }
 .char-leave-to,
 .char-leave-active {
   display: none;
 }
 
+@keyframes wavy {
+  from {
+    top: 3px;
+  }
+  to {
+    top: -3px;
+  }
+}
 
 #signups-buttons-cont {
   display: flex;
@@ -458,9 +657,11 @@ function advanceFrame() {
 }
 
 #terminal {
+  --inner-padding: 25px;
   z-index: 10;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - (var(--inner-padding) * 2) );
+  height: calc(100% - (var(--inner-padding) * 2) );
+  padding: var(--inner-padding);
   background: #151515;
   border-radius: calc(var(--border-radius) - (var(--margin) * 2));
   display: flex;

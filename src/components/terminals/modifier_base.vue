@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { inject, ref, Ref } from 'vue';
 import { TerminalEvents } from '../../modules/persists';
+import { useSound } from '@vueuse/sound'
 
 const props = defineProps<{
   type: "noun" | "verb" | "adjective"
@@ -20,6 +21,14 @@ TerminalEvents.on("terminal_opened_"+props.type, () => {
   if (!mountedOnce.value) {
     CanContinue.value = false
   }
+})
+TerminalEvents.on("terminal_submitted_"+props.type, () => {
+  motherboardSFX.play()
+})
+
+import motherboardAudio from "../../assets/sfx/motherboard.flac"
+const motherboardSFX = useSound(motherboardAudio, {
+  interrupt: false
 })
 </script> 
 

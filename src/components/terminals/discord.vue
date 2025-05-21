@@ -2,6 +2,7 @@
 import { computed, ComputedRef, inject, onMounted, ref, Ref, triggerRef } from 'vue'
 import { API } from '../../modules/api'
 import { DiscordAccess, DiscordAuth, TerminalEvents } from '../../modules/persists'
+import { refreshState } from '../../modules/init'
 
 const CanContinue = (inject("CanContinue") as Ref<boolean>)
 
@@ -30,6 +31,7 @@ function loginWithDiscord() {
       // await (new Promise<void>((res, rej) => {setTimeout(() => res(), 10)}))
 
       let this_res = await API.GET("/discord_only_endpoint")
+      await refreshState()
       if (DiscordLoggedIn.value) {
         _DiscordJustLoggedIn.value = true
         CanContinue.value = true

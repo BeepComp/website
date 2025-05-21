@@ -2,13 +2,21 @@ import EventEmitter from "eventemitter3";
 import { API } from "./api";
 import { SignUpMetadata, signupMode } from "./persists";
 import { State } from "@beepcomp/core";
-import { ref } from "vue";
+import { Ref, ref } from "vue";
 
 export const InitEvents = new EventEmitter()
 export const isParticipant = ref(false)
 
-API.GET("/state").then((state: State) => {
-print("state: ", state)
+export const LastState: Ref<State> = ref({
+  serverTime: 0,
+  started: false
+})
+export async function refreshState() {
+  let state: State = await API.GET("/state")
+
+  print("state: ", state)
+
+  LastState.value = state
 
   if (state.started != true && state.signupMeta != null) {
     signupMode.value = true
@@ -17,4 +25,6 @@ print("state: ", state)
   }
 
   isParticipant.value = (state.user?.participant || false)
-})
+}
+
+refreshState()

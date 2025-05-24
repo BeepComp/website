@@ -17,14 +17,14 @@ export async function refreshState() {
   print("state: ", state)
 
   LastState.value = state
+  
+  isParticipant.value = (state.user?.participant || false)
 
   if (state.started != true && state.signupMeta != null) {
     signupMode.value = true
     SignUpMetadata.value = state.signupMeta
     InitEvents.emit("signup_init", state.signupMeta)
   }
-
-  isParticipant.value = (state.user?.participant || false)
 }
 
 refreshState()

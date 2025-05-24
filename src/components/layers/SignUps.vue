@@ -154,6 +154,12 @@ async function gotoDialogue(id: string) {
         thisDialogue.lines = ["[wavy]Welcome back, ${DISCORD_USER}![/wavy] What are you looking to do?..."]
       }
     break;
+    case "modifier_introduction":
+      if (isParticipant.value) {
+        gotoDialogue("already_verified")
+        return
+      }      
+    break;
     case "verify_identity":
       switchTo("main")
       if (isParticipant.value) {
@@ -421,18 +427,18 @@ advanceFrame()
 <div id="signups" class="layer">
   <Transition name="cont">
     <div ref="signups-lines-cont" id="signups-lines-cont" class="signup-cont" v-show="linesVisible"> <!-- Lines Container -->
-      <p v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
+      <div v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
         <TransitionGroup name="line">
-          <p v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
-            <p v-for="(charObj, charIdx) in word" class="line-char-cont" :wavy="charObj.tags.map(tag => tag.tag).includes('wavy')" :style="`--height: ${avgHeight}px; --index: ${visibleLines.indexOf(`${lineIdx}-${wordIdx}-${charIdx}`)}`">
+          <div v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
+            <div v-for="(charObj, charIdx) in word" class="line-char-cont" :wavy="charObj.tags.map(tag => tag.tag).includes('wavy')" :style="`--height: ${avgHeight}px; --index: ${visibleLines.indexOf(`${lineIdx}-${wordIdx}-${charIdx}`)}`">
               <p ref="char" v-html="charObj.html" class="line-char-ref" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
               <Transition name="char">
                 <p v-show="visibleLines.includes(`${lineIdx}-${wordIdx}-${charIdx}`)" class="line-char" v-html="charObj.html" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}:${charIdx}`"></p>
               </Transition>
-            </p>
-          </p>
+            </div>
+          </div>
         </TransitionGroup>
-      </p>
+      </div>
     </div>
   </Transition>
   <Transition name="cont">

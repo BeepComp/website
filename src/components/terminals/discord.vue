@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ComputedRef, inject, onMounted, ref, Ref, triggerRef } from 'vue'
 import { API } from '../../modules/api'
-import { DiscordAccess, DiscordAuth, TerminalEvents } from '../../modules/persists'
-import { refreshState } from '../../modules/init'
+import { DiscordAccess, DiscordAuth, TerminalEvents, Toast } from '../../modules/persists'
+import { LastState, loadingThings, refreshState } from '../../modules/init'
 
 const CanContinue = (inject("CanContinue") as Ref<boolean>)
 
@@ -22,6 +22,7 @@ function loginWithDiscord() {
 
   window.addEventListener("message", async e => {
     let { code } = JSON.parse(e.data)
+    loadingThings.value["verifyingDiscord"] = true
 
     let res = await API.POST("/discord/identify", {code})
     print(res)
@@ -32,9 +33,16 @@ function loginWithDiscord() {
 
       let this_res = await API.GET("/discord_only_endpoint")
       await refreshState()
+
+      loadingThings.value["verifyingDiscord"] = false
+
       if (DiscordLoggedIn.value) {
+        Toast("Logged in with Discord!")
         _DiscordJustLoggedIn.value = true
         CanContinue.value = true
+        if (!LastState.value.server_valid) {
+          TerminalEvents.emit("missing_server")
+        }
       }
     }
   })

@@ -1,6 +1,8 @@
 import "./extends/print"
 import "./extends/string"
 
+import "./modules/keys"
+
 import { createApp, ref, inject } from 'vue';
 import './style.css'
 import App from './App.vue'

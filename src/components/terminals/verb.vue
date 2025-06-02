@@ -4,7 +4,7 @@ import ModifierBase from "./modifier_base.vue"
 
 <template>
 <ModifierBase type="verb">
-A word for a person, place, or thing. It must be single word, and can't be a proper noun. Unique, interesting, and inspiring words are more likely to be rewarded!
+A word of action.  Try to use the words simplest form - for example, "run" rather than "running". It must be a single word. Unique, interesting, and inspiring words are more likely to be rewarded!
 </ModifierBase>
 </template>
 

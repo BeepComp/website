@@ -1,0 +1,17 @@
+import { onKeyStroke, useMousePressed } from '@vueuse/core'
+import EventEmitter from 'eventemitter3'
+import { watch } from 'vue'
+
+export const KeyEvents = new EventEmitter()
+
+onKeyStroke(['Enter'], (e) => {
+  KeyEvents.emit("enter")
+})
+
+
+const { pressed } = useMousePressed()
+watch(pressed, (v) => {
+  if (v) {
+    KeyEvents.emit("click")
+  }
+})

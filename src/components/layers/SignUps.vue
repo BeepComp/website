@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ComputedRef, DefineComponent, inject, onMounted, provide, ref, render, triggerRef, unref, useTemplateRef, type Ref } from 'vue';
 import { API } from '../../modules/api';
-import { InitEvents, isParticipant, LastState } from '../../modules/init';
-import { DiscordAccess, DiscordAuth, SignUpMetadata, signupMode, TerminalEvents } from '../../modules/persists';
+import { InitEvents, isParticipant, LastState, loadingThings } from '../../modules/init';
+import { DiscordAccess, DiscordAuth, ParticipationCache, SignUpMetadata, signupMode, TerminalEvents, Toast } from '../../modules/persists';
 import { CharObj, getLineChars, SignupButton, SignupDialogue, State } from '@beepcomp/core';
 
 import { ReturnedValue, useSound } from '@vueuse/sound'
@@ -115,9 +115,14 @@ const ButtonFilter: Ref<(button: SignupButton, index?: number) => boolean> = ref
 const ButtonIntercepts: Ref<{[index: string]: () => void}> = ref({
   signup_confirm_yes: async () => {
     print("I'm boss.", SignUpPayload.value)
-    // Loading Wheel?...
+
+    loadingThings.value["signingUp"] = true
     await API.POST("/signup", SignUpPayload.value)
+    loadingThings.value["signingUp"] = false
+
     isParticipant.value = true
+    ParticipationCache.value = true
+    Toast("Successfully signed up to tournament!")
     gotoDialogue("signup_complete")
   },
   withdraw_yes: async () => {
@@ -126,10 +131,40 @@ const ButtonIntercepts: Ref<{[index: string]: () => void}> = ref({
     DiscordAuth.value = {}
     _DiscordJustLoggedIn.value = false
     isParticipant.value = false
+    ParticipationCache.value = false
+
+    loadingThings.value["deletingUser"] = true
     let res = await API.DELETE("/users/@me")
+    loadingThings.value["deletingUser"] = false
+
     print("DELETE res: ", res)
+    Toast("Withdrawed from Tournament!")
     gotoDialogue("home")
-  }
+  },
+  missing_server_join_manual: async () => {
+    print("I'm boss.")
+    // Loading Wheel?...
+
+    // Logging Out To Reset Identity Verify
+    DiscordAuth.value = {}
+    _DiscordJustLoggedIn.value = false
+    isParticipant.value = false
+    ParticipationCache.value = false
+
+    window.open("https://discord.gg/beepbox")
+    gotoDialogue("waiting_to_join_server")
+  },
+  missing_server_cancel: async () => {
+    // Toasts here announcing that you cancelled the signup process
+
+    // Logging Out Just To Be Safe
+    DiscordAuth.value = {}
+    _DiscordJustLoggedIn.value = false
+    isParticipant.value = false
+    ParticipationCache.value = false
+
+    gotoDialogue("home")
+  },
 })
 const ContinueIntercepts: Ref<{[index: string]: () => void}> = ref({
 })
@@ -142,7 +177,11 @@ async function gotoDialogue(id: string) {
   // Intercepts for various things
   switch (thisDialogue?.id) {
     case "home":
-      switchTo("pre")
+      if (isParticipant.value) {
+        switchTo("post")
+      } else {
+        switchTo("pre")
+      }
       ButtonFilter.value = (button) => {
         let res = true
         if (!isParticipant.value && button.id == "home_withdraw") { res = false }
@@ -158,7 +197,7 @@ async function gotoDialogue(id: string) {
       if (isParticipant.value) {
         gotoDialogue("already_verified")
         return
-      }      
+      }
     break;
     case "verify_identity":
       switchTo("main")
@@ -220,6 +259,10 @@ async function gotoDialogue(id: string) {
   }
 }
 
+TerminalEvents.on("missing_server", () => {
+  gotoDialogue("missing_server")
+})
+
 function escapeRegExp(str: string) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
@@ -248,8 +291,12 @@ function injectVars(line: string) {
 
 const renderedLines: Ref<CharObj[][][]> = ref([]) // lines => words => chars
 const visibleLines: Ref<string[]> = ref([]) // lines => words => chars
-// const renderingLineIdx = ref(-1)
+
+const renderingLineIdx = ref(-1)
 const lineID: Ref<number> = ref(0)
+const lineSkipped = ref(false)
+const currentlyRendering = ref(false)
+// const currentLine = ref(0)
 async function sayLine(line: string) {
   lineID.value = Date.now()
   let thisID = Date.now()
@@ -257,7 +304,11 @@ async function sayLine(line: string) {
   clear_timeout_channel("rendering_chars")
 
   return new Promise<void>(async (res, rej) => {
+    lineSkipped.value = false
+    currentlyRendering.value = true
+
     let lineIdx = renderedLines.value.length
+    renderingLineIdx.value = lineIdx
     let lastLine = ((renderedLines.value.length + 1) == CurrentDialogue.value?.lines.length)
     // visibleLines.value.push([[]]) // line with an empty word
 
@@ -298,9 +349,10 @@ async function sayLine(line: string) {
         charIdx = 0
       }
       
-      if (wordIdx == words.length) {
+      if (wordIdx == words.length || lineSkipped.value) {
         // clear_interval(lineInt)
         if (!lastLine) { finished() }
+        currentlyRendering.value = false
       } else {
         // print(wordIdx, charIdx, words)
         let this_delay = getDelay(words[wordIdx][charIdx].char)
@@ -362,6 +414,7 @@ import verb_terminal from "../terminals/verb.vue"
 import adjective_terminal from "../terminals/adjective.vue"
 import { clear_interval, clear_interval_channel, clear_timeout_channel, interval, timeout, wait } from '../../modules/time_based';
 import { lerp } from '../../modules/maths';
+import { KeyEvents } from '../../modules/keys';
 // import { switchTo } from '../../modules/music';
 const Terminals: any = {
   discord: discord_terminal,
@@ -421,6 +474,44 @@ function advanceFrame() {
   requestAnimationFrame(advanceFrame)
 }
 advanceFrame()
+
+function pressContinue() {
+  if (CanContinue.value) {
+    if (CurrentDialogue != null && lastLine && Object.keys(ContinueIntercepts).includes(CurrentDialogue.value?.id || "")) { 
+      ContinueIntercepts.value[(CurrentDialogue.value?.id || "")]()
+    } else {
+      ContinueAction.value()
+    }
+  }
+}
+
+function skipLines() {
+  // print("HELLOOOOOO????", renderingLineIdx.value, renderedLines.value)
+  renderedLines.value[renderingLineIdx.value].forEach((chars, wordIdx) => {
+    chars.forEach((char, charIdx) => {
+      visibleLines.value.push(`${renderingLineIdx.value}-${wordIdx}-${charIdx}`)
+    })
+  })
+
+  lineSkipped.value = true // :) you better work or I'm showing up at.... someone's house EVERYONES HOUSE. md.
+}
+
+KeyEvents.on("enter", () => {
+  print("Bro pressed Enter?....")
+  if (currentlyRendering.value) {
+    skipLines()
+  } else {
+    pressContinue()
+  }
+})
+
+KeyEvents.on("click", () => {
+  print("Bro Clicked?....")
+  if (currentlyRendering.value) {
+    skipLines()
+  }
+})
+
 </script>
 
 <template>
@@ -459,7 +550,7 @@ advanceFrame()
   </Transition>
   <Transition name="cont">
     <div ref="signups-nav-cont" id="signups-nav-cont" class="signup-cont" v-show="navVisible"> <!-- Navigation Button Container -->
-      <p id="continue-button" @click="e => {if (CanContinue) { if (CurrentDialogue != null && lastLine && Object.keys(ContinueIntercepts).includes(CurrentDialogue.id)) {ContinueIntercepts[CurrentDialogue.id]()} else {ContinueAction()}}}" :can-continue="CanContinue">{{ ContinueLabel }}</p>    </div>
+      <p id="continue-button" @click="e => {pressContinue()}" :can-continue="CanContinue">{{ ContinueLabel }}</p>    </div>
   </Transition>
 </div>
 </template>
@@ -567,6 +658,9 @@ advanceFrame()
 }
 
 .line-char {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
   position: relative;
   /* display: inline-block; */
   white-space: break-spaces;
@@ -678,17 +772,32 @@ advanceFrame()
 
 #signups-nav-cont {
   height: 120px;
-  background: rgb(0 0 255 / 10%);
+  /* background: rgb(0 0 255 / 10%); */
+  display: flex;
+  justify-content: end;
 }
 
 #continue-button {
   font-family: BakbakOne;
-  font-size: 32px;
+  font-size: 64px;
   color: white;
   margin: 0px;
   cursor: pointer;
 }
 #continue-button[can-continue=false] {
   opacity: 0.1;
+}
+#continue-button[can-continue=true] {
+  animation: 0.4s ease-in-out 0s infinite alternate flashing;
+  filter: brightness(1.0);
+}
+
+@keyframes flashing {
+  from {
+    filter: brightness(1.0);
+  }
+  to {
+    filter: brightness(0.2);
+  }
 }
 </style>

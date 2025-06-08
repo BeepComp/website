@@ -4,22 +4,22 @@
 }
 
 body {
-    width: 100vw;
-    max-width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
+    width: var(--scr-width);
+    max-width: var(--scr-width);
+    height: var(--scr-height);
+    max-height: var(--scr-height);
     padding: 0px;
     margin: 0px;
     overflow: hidden;
-    background: linear-gradient(to bottom, #020202, #0f0f0f);
+    background: linear-gradient(to bottom, #030303, #101010);
 }
 
 .layer {
     position: absolute;
-    width: 100vw;
-    max-width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
+    width: 100%;
+    /* max-width: var(--scr-width); */
+    height: 100%;
+    /* max-height: var(--scr-height); */
     padding: 0px;
     margin: 0px;
     overflow: hidden;
@@ -47,11 +47,12 @@ body {
 
   .terminal-subtext {
     font-family: BakbakOne;
-    font-size: 28px;
+    font-size: calc(28px + (15px * var(--is-mobile)));
     color: #ffffff3c;
     /* opacity: 0.25; */
     font-style: italic;
     text-align: center;
+    overflow: hidden;
   }
 
   .terminal-subtext-bold {

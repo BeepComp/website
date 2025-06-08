@@ -8,6 +8,10 @@ onKeyStroke(['Enter'], (e) => {
   KeyEvents.emit("enter")
 })
 
+onKeyStroke(true, (e) => {
+  KeyEvents.emit("any")
+})
+
 
 const { pressed } = useMousePressed()
 watch(pressed, (v) => {

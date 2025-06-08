@@ -2,7 +2,7 @@
 import { computed, ComputedRef, DefineComponent, inject, onMounted, provide, ref, render, triggerRef, unref, useTemplateRef, type Ref } from 'vue';
 import { API } from '../../modules/api';
 import { InitEvents, isParticipant, LastState, loadingThings } from '../../modules/init';
-import { DiscordAccess, DiscordAuth, ParticipationCache, SignUpMetadata, signupMode, TerminalEvents, Toast } from '../../modules/persists';
+import { DiscordAccess, DiscordAuth, isMobile, ParticipationCache, SignUpMetadata, signupMode, TerminalEvents, Toast } from '../../modules/persists';
 import { CharObj, getLineChars, SignupButton, SignupDialogue, State } from '@beepcomp/core';
 
 import { ReturnedValue, useSound } from '@vueuse/sound'
@@ -31,11 +31,6 @@ const brainscan_postSFX = useSound(brainscan_postAudio, {onload: () => {
   volume: 0
 })
 
-InitEvents.on("signup_init", (state: State) => {
-  print("bro...")
-  // switchTo("pre")
-})
-
 function switchTo(mode: string) {
   const map: {[index: string]: ReturnedValue} = {
     "pre": brainscan_preSFX,
@@ -59,16 +54,14 @@ function switchTo(mode: string) {
   })
 }
 
-import printingAudio from "../../assets/sfx/printing.flac"
-const printingSFX = useSound(printingAudio, {
-  interrupt: false,
-  playbackRate: 3
-})
+// import printingAudio from "../../assets/sfx/printing.flac"
+const printingSFX: ReturnedValue = (inject("printingSFX") as ReturnedValue)
 
-import hoverAudio from "../../assets/sfx/hover.flac"
-const hoverSFX = useSound(hoverAudio, {
-  interrupt: false
-})
+// import hoverAudio from "../../assets/sfx/hover.flac"
+// const hoverSFX = useSound(hoverAudio, {
+//   interrupt: false
+// })
+const hoverSFX: ReturnedValue = (inject("hoverSFX") as ReturnedValue)
 
 const SignUpPayload = ref({
   noun: "",
@@ -177,6 +170,7 @@ async function gotoDialogue(id: string) {
   // Intercepts for various things
   switch (thisDialogue?.id) {
     case "home":
+      setTitle("WELCOME TO MINDCORP")
       if (isParticipant.value) {
         switchTo("post")
       } else {
@@ -200,6 +194,7 @@ async function gotoDialogue(id: string) {
       }
     break;
     case "verify_identity":
+      setTitle("Picking your brain...")
       switchTo("main")
       if (isParticipant.value) {
         gotoDialogue("already_verified")
@@ -372,6 +367,7 @@ async function sayLine(line: string) {
       charIdx += 1
     }
     loop()
+    if (isMobile.value) { skipLines() }
 
     async function finished() {
       if (!lastLine) {
@@ -415,6 +411,7 @@ import adjective_terminal from "../terminals/adjective.vue"
 import { clear_interval, clear_interval_channel, clear_timeout_channel, interval, timeout, wait } from '../../modules/time_based';
 import { lerp } from '../../modules/maths';
 import { KeyEvents } from '../../modules/keys';
+import { setTitle } from '../../modules/title';
 // import { switchTo } from '../../modules/music';
 const Terminals: any = {
   discord: discord_terminal,
@@ -518,7 +515,7 @@ KeyEvents.on("click", () => {
 <div id="signups" class="layer">
   <Transition name="cont">
     <div ref="signups-lines-cont" id="signups-lines-cont" class="signup-cont" v-show="linesVisible"> <!-- Lines Container -->
-      <div v-for="(line, lineIdx) in renderedLines" class="rendered-line" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
+      <div v-for="(line, lineIdx) in renderedLines" class="rendered-line" :mobile="isMobile" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}`">
         <TransitionGroup name="line">
           <div v-for="(word, wordIdx) in line" class="line-word" :key="`${CurrentDialogue?.id || '_'}:${lineIdx}:${wordIdx}`">
             <div v-for="(charObj, charIdx) in word" class="line-char-cont" :wavy="charObj.tags.map(tag => tag.tag).includes('wavy')" :style="`--height: ${avgHeight}px; --index: ${visibleLines.indexOf(`${lineIdx}-${wordIdx}-${charIdx}`)}`">
@@ -562,8 +559,8 @@ KeyEvents.on("click", () => {
   gap: 15px;
   --padding: 30px;
   padding: var(--padding);
-  width: calc(100vw - (var(--padding) * 2));
-  height: calc(100vh - (var(--padding) * 2));
+  width: calc(var(--scr-width) - (var(--padding) * 2));
+  height: calc(var(--scr-height) - (var(--padding) * 2));
   transition: all 100ms cubic-bezier(0.215, 0.610, 0.355, 1);
 }
 
@@ -615,6 +612,7 @@ KeyEvents.on("click", () => {
   transition: 0.5s ease;
   transition-property: opacity, transform;
 }
+.rendered-line[mobile=true] { transition: none; transition-property: none }
 
 .rendered-line:last-child {
   opacity: 1.0;
@@ -713,7 +711,8 @@ KeyEvents.on("click", () => {
   display: flex;
   flex-direction: column;
   gap: 35px;
-  --padding: 200px;
+  --inverse-mobile: calc(1 - var(--is-mobile));
+  --padding: calc(200px - (150px * var(--is-mobile)));
   padding-left: var(--padding);
   padding-right: var(--padding);
   width: calc(100% - (var(--padding) * 2));

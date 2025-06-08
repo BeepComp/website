@@ -6,10 +6,18 @@ import { timeout } from "./time_based";
 export const DiscordAuth: RemovableRef<any> = useStorage("discord_token", {})
 export const ParticipationCache: RemovableRef<any> = useStorage("already_participating", false)
 
+export const isMobile = ref(false)
+
 export const signupMode = ref(false)
 export const SignUpMetadata: Ref<SignupDialogue[]> = ref([])
+export const StartedUp: Ref<Boolean> = ref(false)
 
+export const GeneralEvents = new EventEmitter()
 export const TerminalEvents = new EventEmitter()
+
+GeneralEvents.on("startup", () => {
+  StartedUp.value = true
+})
 
 export const active_toasts: Ref<{id: number, text: string}[]> = ref([])
 var toast_id = 0

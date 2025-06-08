@@ -2,6 +2,7 @@
 import { inject, ref, Ref } from 'vue';
 import { TerminalEvents } from '../../modules/persists';
 import { useSound } from '@vueuse/sound'
+import { timeout } from '../../modules/time_based';
 
 const props = defineProps<{
   type: "noun" | "verb" | "adjective"
@@ -17,23 +18,27 @@ function check(e: Event) {
 }
 
 const mountedOnce = ref(false)
+const inputElem = templateRef("inputElem")
 TerminalEvents.on("terminal_opened_"+props.type, () => {
   if (!mountedOnce.value) {
     CanContinue.value = false
   }
+  print(inputElem.value)
+  timeout(() => {inputElem.value.focus()}, 10)
 })
 TerminalEvents.on("terminal_submitted_"+props.type, () => {
   motherboardSFX.play()
 })
 
 import motherboardAudio from "../../assets/sfx/motherboard.flac"
+import { templateRef } from '@vueuse/core';
 const motherboardSFX = useSound(motherboardAudio, {
   interrupt: false
 })
 </script> 
 
 <template>
-<input class="terminal-input" @input="check" @change="check" v-model="textContent" style="--color: #7744ff" :placeholder="`Input ${props.type.toTitleCase()}...`" />
+<input class="terminal-input" @input="check" @change="check" ref="inputElem" v-model="textContent" style="--color: #7744ff" :placeholder="`Input ${props.type.toTitleCase()}...`" />
 <p class="terminal-subtext"><slot></slot><span class="terminal-subtext-bold">Offensive and clear joke submissions will not be considered.</span></p>
 </template>
 

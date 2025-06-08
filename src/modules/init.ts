@@ -1,6 +1,6 @@
 import EventEmitter from "eventemitter3";
 import { API } from "./api";
-import { DiscordAuth, ParticipationCache, SignUpMetadata, signupMode } from "./persists";
+import { DiscordAuth, GeneralEvents, ParticipationCache, SignUpMetadata, signupMode } from "./persists";
 import { State } from "@beepcomp/core";
 import { Ref, ref } from "vue";
 
@@ -43,4 +43,6 @@ export async function refreshState() {
   loadingThings.value["fetchingState"] = false
 }
 
-refreshState()
+GeneralEvents.on("startup", () => {
+  refreshState()
+})

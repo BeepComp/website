@@ -64,6 +64,8 @@ async function attemptLogin() {
 </div>
 </template>
 
+
+
 <style scoped>
 #sidebar {
   --sidebar-padding: 15px;
@@ -105,6 +107,7 @@ async function attemptLogin() {
   color: white;
   margin: 0px;
   margin-left: 80px;
+  cursor:pointer
 }
 
 #account-progress {
@@ -136,5 +139,19 @@ async function attemptLogin() {
   padding: 5px;
   margin-bottom: 8px;
   opacity: 0.5;
+}
+
+@media (max-width: 1000px) {
+  #sidebar {
+    height: auto;
+    width: 90%;
+  }
+  #buttons {
+    flex-direction: row;
+    flex-wrap:wrap;
+  }
+  .rounds {
+    order: 100;
+  }
 }
 </style>
